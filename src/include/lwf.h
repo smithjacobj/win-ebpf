@@ -2,13 +2,7 @@
 
 #include "main.h"
 
-namespace nfq {
-
-// DRIVER_CONTEXT is the driver-global context area for the entire driver.
-typedef struct DRIVER_CONTEXT {} DRIVER_CONTEXT;
-
-// DRIVER_MODULE is the module-local storage for each driver module instance.
-typedef struct DRIVER_MODULE {} DRIVER_MODULE;
+namespace win_ebpf {
 
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff544113(v=vs.85).aspx
 DRIVER_INITIALIZE driver_entry;
@@ -76,4 +70,4 @@ FILTER_RECEIVE_NET_BUFFER_LISTS filter_receive_net_buffer_lists;
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549964(v=vs.85).aspx
 FILTER_RETURN_NET_BUFFER_LISTS filter_return_net_buffer_lists;
 
-}; // namespace nfq
+}; // namespace win_ebpf
