@@ -3,6 +3,8 @@
 
 namespace win_ebpf {
 
+constexpr ULONG DATA_BUFFER_SIZE = 0xFFFF;
+
 // init functions can be removed from memory once they have completed.
 #pragma NDIS_INIT_FUNCTION(driver_entry)
 
@@ -94,7 +96,41 @@ _Use_decl_annotations_ VOID filter_cancel_send_net_buffer_lists(NDIS_HANDLE filt
 _Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_module_context,
                                                          PNET_BUFFER_LIST net_buffer_list,
                                                          NDIS_PORT_NUMBER port_number,
-                                                         ULONG send_flags) {}
+                                                         ULONG send_flags) {
+    PNET_BUFFER_LIST cancel_nbl = NULL, cancel_nbl_tail = &cancel_nbl;
+
+    for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_list; *current_nbl_ptr != NULL;
+         current_nbl_ptr = &(*current_nbl_ptr)->Next) {
+        void *data = NdisAllocateMemoryWithTagPriority(filter_module_context, DATA_BUFFER_SIZE,
+                                                       DRIVER_SIGNATURE, NormalPoolPriority);
+        if (data == NULL) {
+            // TODO: ERROR: alloc failure
+        }
+
+        size_t data_length = coallate_nbl(data, net_buffer_list);
+        u32 xdp_flag = send_to_ebpf(data, data_length);
+        NdisFreeMemoryWithTagPriority(filter_module_context, data, DRIVER_SIGNATURE);
+
+        switch (xdp_flag) {
+        case XDP_PASS:
+            break;
+        case XDP_DROP:
+        case XDP_ABORTED:
+        default:
+            insert_nbl(cancel_nbl_tail, remove_nbl(current_nbl_ptr));
+            cancel_nbl_tail = &(*cancel_nbl_tail)->Next();
+            break;
+        }
+    }
+
+    if (net_buffer_list != NULL) {
+        NdisFSendNetBufferLists(filter_module_context, net_buffer_list);
+    }
+
+    if (cancel_nbl != NULL) {
+        NdisFSendNetBufferListsComplete(filter_module_context, cancel_nbl);
+    }
+}
 
 // filter_send_net_buffer_lists_complete
 _Use_decl_annotations_ VOID filter_send_net_buffer_lists_complete(NDIS_HANDLE filter_module_context,
