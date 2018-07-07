@@ -1,6 +1,6 @@
 #pragma once
 
-namespace win_ebpf {
+namespace win_xdp {
 
 // DRIVER_CONTEXT is the driver-global context area for the entire driver.
 struct DRIVER_CONTEXT {};
@@ -11,4 +11,4 @@ struct DRIVER_MODULE {};
 // ROOT_DEVICE_EXTENSION is the device-local storage for each device instance.
 struct ROOT_DEVICE_EXTENSION {};
 
-} // namespace win_ebpf
+} // namespace win_xdp

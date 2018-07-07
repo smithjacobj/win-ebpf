@@ -1,7 +1,7 @@
 #include "lwf.h"
 #include "globals.h"
 
-namespace win_ebpf {
+namespace win_xdp {
 
 constexpr ULONG DATA_BUFFER_SIZE = 0xFFFF;
 
@@ -108,7 +108,7 @@ _Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_modu
         }
 
         size_t data_length = coallate_nbl(data, net_buffer_list);
-        u32 xdp_flag = send_to_ebpf(data, data_length);
+        u32 xdp_flag = run_xdp(data, data_length);
         NdisFreeMemoryWithTagPriority(filter_module_context, data, DRIVER_SIGNATURE);
 
         switch (xdp_flag) {
@@ -149,4 +149,4 @@ _Use_decl_annotations_ VOID filter_return_net_buffer_lists(NDIS_HANDLE filter_mo
                                                            PNET_BUFFER_LIST net_buffer_lists,
                                                            ULONG return_flags) {}
 
-}; // namespace win_ebpf
+}; // namespace win_xdp

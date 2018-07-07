@@ -2,7 +2,7 @@
 
 #include "main.h"
 
-namespace win_ebpf {
+namespace win_xdp {
 
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff544113(v=vs.85).aspx
 DRIVER_INITIALIZE driver_entry;
@@ -70,4 +70,4 @@ FILTER_RECEIVE_NET_BUFFER_LISTS filter_receive_net_buffer_lists;
 // https://msdn.microsoft.com/en-us/library/windows/hardware/ff549964(v=vs.85).aspx
 FILTER_RETURN_NET_BUFFER_LISTS filter_return_net_buffer_lists;
 
-}; // namespace win_ebpf
+}; // namespace win_xdp

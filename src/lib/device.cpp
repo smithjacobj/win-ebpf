@@ -4,7 +4,7 @@
 #include "globals.h"
 #include "main.h"
 
-namespace win_ebpf {
+namespace win_xdp {
 
 DRIVER_DISPATCH root_device_manage;
 DRIVER_DISPATCH root_device_ioctl;
@@ -62,4 +62,4 @@ _Use_decl_annotations_ static NTSTATUS root_device_manage(PDEVICE_OBJECT dev_obj
 // root_device_ioctl
 _Use_decl_annotations_ static NTSTATUS root_device_ioctl(PDEVICE_OBJECT dev_obj, PIRP irp) {}
 
-} // namespace win_ebpf
+} // namespace win_xdp
