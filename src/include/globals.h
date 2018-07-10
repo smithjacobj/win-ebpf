@@ -5,7 +5,7 @@
 namespace win_xdp {
 
 extern PDRIVER_OBJECT global_driver_object;
-extern DRIVER_CONTEXT global_driver_context;
+extern FILTER_GLOBAL_CONTEXT global_FILTER_GLOBAL_CONTEXT;
 extern NDIS_HANDLE global_driver_handle;
 
 extern PDEVICE_OBJECT global_root_device_object;

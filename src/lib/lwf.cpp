@@ -46,7 +46,7 @@ _Use_decl_annotations_ NTSTATUS driver_entry(struct _DRIVER_OBJECT *driver_objec
     // module should be inactive.
 
     // register the driver properties
-    status = NdisFRegisterFilterDriver(driver_object, &global_driver_context, &fchars,
+    status = NdisFRegisterFilterDriver(driver_object, &global_FILTER_GLOBAL_CONTEXT, &fchars,
                                        &global_driver_handle);
     if (!NT_SUCCESS(status)) {
         return status;
@@ -62,91 +62,163 @@ _Use_decl_annotations_ void driver_unload(struct _DRIVER_OBJECT *driver_object) 
 
 // filter_attach
 _Use_decl_annotations_ NDIS_STATUS filter_attach(NDIS_HANDLE ndis_filter_handle,
-                                                 NDIS_HANDLE filter_driver_context,
+                                                 NDIS_HANDLE filter_FILTER_GLOBAL_CONTEXT,
                                                  PNDIS_FILTER_ATTACH_PARAMETERS attach_parameters) {
+    // TODO: allocate NBL pool
 }
 
 // filter_detach
-_Use_decl_annotations_ VOID filter_detach(NDIS_HANDLE filter_module_context) {}
+_Use_decl_annotations_ VOID filter_detach(NDIS_HANDLE filter_instance_context_void) {
+    // TODO: deallocate NBL pool
+}
 
 // filter_restart
 _Use_decl_annotations_ NDIS_STATUS filter_restart(
-    NDIS_HANDLE filter_module_context, PNDIS_FILTER_RESTART_PARAMETERS restart_parameters) {}
+    NDIS_HANDLE filter_instance_context_void, PNDIS_FILTER_RESTART_PARAMETERS restart_parameters) {}
 
 // filter_pause
-_Use_decl_annotations_ NDIS_STATUS filter_pause(NDIS_HANDLE filter_module_context,
+_Use_decl_annotations_ NDIS_STATUS filter_pause(NDIS_HANDLE filter_instance_context_void,
                                                 PNDIS_FILTER_PAUSE_PARAMETERS pause_parameters) {}
 
 // filter_set_options
 _Use_decl_annotations_ NDIS_STATUS filter_set_options(NDIS_HANDLE ndis_driver_handle,
-                                                      NDIS_HANDLE driver_context) {}
+                                                      NDIS_HANDLE FILTER_GLOBAL_CONTEXT) {}
 
 // filter_set_module_options
-_Use_decl_annotations_ NDIS_STATUS filter_set_module_options(NDIS_HANDLE filter_module_context) {}
+_Use_decl_annotations_ NDIS_STATUS
+filter_set_module_options(NDIS_HANDLE filter_instance_context_void) {}
 
 // filter_status
-_Use_decl_annotations_ VOID filter_status(NDIS_HANDLE filter_module_context,
+_Use_decl_annotations_ VOID filter_status(NDIS_HANDLE filter_instance_context_void,
                                           PNDIS_STATUS_INDICATION status_indication) {}
 
 // filter_cancel_send_net_buffer_lists
-_Use_decl_annotations_ VOID filter_cancel_send_net_buffer_lists(NDIS_HANDLE filter_module_context,
-                                                                PNET_BUFFER_LIST net_buffer_lists,
-                                                                ULONG return_flags) {}
+_Use_decl_annotations_ VOID
+filter_cancel_send_net_buffer_lists(NDIS_HANDLE filter_instance_context_void, PVOID cancel_id) {
+    // this function is required, but this driver does not queue NBLs for a "long" period of time
+    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    NdisFCancelSendNetBufferLists(context->ndis_filter_handle, cancel_id);
+}
+
 // filter_send_net_buffer_lists
-_Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_module_context,
+_Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_instance_context_void,
                                                          PNET_BUFFER_LIST net_buffer_list,
                                                          NDIS_PORT_NUMBER port_number,
                                                          ULONG send_flags) {
-    PNET_BUFFER_LIST cancel_nbl = NULL, cancel_nbl_tail = &cancel_nbl;
+    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    PNET_BUFFER_LIST next;
+
+    // allocate a contiguous buffer for packets
+    void *data = NdisAllocateMemoryWithTagPriority(context->ndis_filter_handle, DATA_BUFFER_SIZE,
+                                                   DRIVER_SIGNATURE, NormalPoolPriority);
+    if (data == NULL) {
+        // ERROR: alloc failure. default abort (like invalid xdp flags)
+        wx_error_print("buffer allocation failed");
+        NdisFSendNetBufferListsComplete(context->ndis_filter_handle, net_buffer_list);
+        return;
+    }
 
     for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_list; *current_nbl_ptr != NULL;
          current_nbl_ptr = &(*current_nbl_ptr)->Next) {
-        void *data = NdisAllocateMemoryWithTagPriority(filter_module_context, DATA_BUFFER_SIZE,
-                                                       DRIVER_SIGNATURE, NormalPoolPriority);
-        if (data == NULL) {
-            // TODO: ERROR: alloc failure
-        }
 
+        // copy NBL data into a single contiguous buffer
         size_t data_length = coallate_nbl(data, net_buffer_list);
         u32 xdp_flag = run_xdp(data, data_length);
-        NdisFreeMemoryWithTagPriority(filter_module_context, data, DRIVER_SIGNATURE);
 
+        // move dropped/aborted/error NBLs to the cancel list
         switch (xdp_flag) {
-        case XDP_PASS:
-            break;
-        case XDP_DROP:
-        case XDP_ABORTED:
-        default:
-            insert_nbl(cancel_nbl_tail, remove_nbl(current_nbl_ptr));
-            cancel_nbl_tail = &(*cancel_nbl_tail)->Next();
-            break;
+            case XDP_PASS:
+                next = (*current_nbl_ptr)->Next;
+                (*current_nbl_ptr)->Next = NULL;
+                NdisFSendNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr);
+                (*current_nbl_ptr)->Next = next;
+                break;
+            case XDP_TX:
+            case XDP_DROP:
+            case XDP_ABORTED:
+            default:
+                next = (*current_nbl_ptr)->Next;
+                (*current_nbl_ptr)->Next = NULL;
+                NdisFSendNetBufferListsComplete(context->ndis_filter_handle, *current_nbl_ptr);
+                break;
         }
     }
 
-    if (net_buffer_list != NULL) {
-        NdisFSendNetBufferLists(filter_module_context, net_buffer_list);
-    }
-
-    if (cancel_nbl != NULL) {
-        NdisFSendNetBufferListsComplete(filter_module_context, cancel_nbl);
-    }
+    // free the contiguous buffer
+    NdisFreeMemoryWithTagPriority(filter_instance_context_void, data, DRIVER_SIGNATURE);
 }
 
 // filter_send_net_buffer_lists_complete
-_Use_decl_annotations_ VOID filter_send_net_buffer_lists_complete(NDIS_HANDLE filter_module_context,
-                                                                  PNET_BUFFER_LIST net_buffer_lists,
-                                                                  ULONG send_complete_flags) {}
+_Use_decl_annotations_ VOID
+filter_send_net_buffer_lists_complete(NDIS_HANDLE filter_instance_context_void,
+                                      PNET_BUFFER_LIST net_buffer_list, ULONG send_complete_flags) {
+    // we don't allocate any new NBLs, so we simply pass along requests.
+    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    NdisFSendNetBufferListsComplete(context->ndis_filter_handle, net_buffer_list,
+                                    send_complete_flags);
+}
 
 // filter_receive_net_buffer_lists
 _Use_decl_annotations_ VOID filter_receive_net_buffer_lists(NDIS_HANDLE filter_mdoule_context,
-                                                            PNET_BUFFER_LIST net_buffer_lists,
+                                                            PNET_BUFFER_LIST net_buffer_list,
                                                             NDIS_PORT_NUMBER port_number,
                                                             ULONG number_of_net_buffer_lists,
-                                                            ULONG receive_flags) {}
+                                                            ULONG receive_flags) {
+    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    PNET_BUFFER_LIST next;
+
+    // allocate a contiguous buffer for packets
+    void *data = NdisAllocateMemoryWithTagPriority(context->ndis_filter_handle, DATA_BUFFER_SIZE,
+                                                   DRIVER_SIGNATURE, NormalPoolPriority);
+    if (data == NULL) {
+        // ERROR: alloc failure. default abort (like invalid xdp flags)
+        wx_error_print("buffer allocation failed");
+        NdisFSendNetBufferListsComplete(context->ndis_filter_handle, net_buffer_list);
+        return;
+    }
+
+    for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_list; *current_nbl_ptr != NULL;
+         current_nbl_ptr = &(*current_nbl_ptr)->Next) {
+
+        // copy NBL data into a single contiguous buffer
+        size_t data_length = coallate_nbl(data, net_buffer_list);
+        u32 xdp_flag = run_xdp(data, data_length);
+
+        // move dropped/aborted/error NBLs to the cancel list
+        switch (xdp_flag) {
+            case XDP_PASS:
+                next = (*current_nbl_ptr)->Next;
+                (*current_nbl_ptr)->Next = NULL;
+                NdisFIndicateReceiveNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr,
+                                                   port_number, 1, receive_flags);
+                break;
+                (*current_nbl_ptr)->Next = next;
+            case XDP_TX:
+                // copy/allocate new NBL and cancel the old one
+                next = (*current_nbl_ptr)->Next;
+                (*current_nbl_ptr)->Next = NULL;
+                send_copy(context, *current_nbl_ptr);
+                NdisFReturnNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr, 0);
+                (*current_nbl_ptr)->Next = next;
+                break;
+            case XDP_DROP:
+            case XDP_ABORTED:
+            default:
+                next = (*current_nbl_ptr)->Next;
+                (*current_nbl_ptr)->Next = NULL;
+                NdisFReturnNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr, 0);
+                (*current_nbl_ptr)->Next = next;
+                break;
+        }
+    }
+
+    // free the contiguous buffer
+    NdisFreeMemoryWithTagPriority(context->ndis_filter_handle, data, DRIVER_SIGNATURE);
+}
 
 // filter_return_net_buffer_lists
-_Use_decl_annotations_ VOID filter_return_net_buffer_lists(NDIS_HANDLE filter_module_context,
-                                                           PNET_BUFFER_LIST net_buffer_lists,
+_Use_decl_annotations_ VOID filter_return_net_buffer_lists(NDIS_HANDLE filter_instance_context_void,
+                                                           PNET_BUFFER_LIST net_buffer_list,
                                                            ULONG return_flags) {}
 
 }; // namespace win_xdp
