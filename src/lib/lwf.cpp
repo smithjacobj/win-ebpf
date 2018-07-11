@@ -92,6 +92,11 @@ filter_set_module_options(NDIS_HANDLE filter_instance_context_void) {}
 _Use_decl_annotations_ VOID filter_status(NDIS_HANDLE filter_instance_context_void,
                                           PNDIS_STATUS_INDICATION status_indication) {}
 
+// send_copy copies the data in a NET_BUFFER_LIST and sends the copy.
+static void send_copy(FILTER_INSTANCE_CONTEXT context, PNET_BUFFER_LIST net_buffer_list) {
+
+}
+
 // filter_cancel_send_net_buffer_lists
 _Use_decl_annotations_ VOID
 filter_cancel_send_net_buffer_lists(NDIS_HANDLE filter_instance_context_void, PVOID cancel_id) {
@@ -133,6 +138,7 @@ _Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_inst
                 NdisFSendNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr);
                 (*current_nbl_ptr)->Next = next;
                 break;
+
             case XDP_TX:
             case XDP_DROP:
             case XDP_ABORTED:
@@ -193,6 +199,7 @@ _Use_decl_annotations_ VOID filter_receive_net_buffer_lists(NDIS_HANDLE filter_m
                                                    port_number, 1, receive_flags);
                 break;
                 (*current_nbl_ptr)->Next = next;
+
             case XDP_TX:
                 // copy/allocate new NBL and cancel the old one
                 next = (*current_nbl_ptr)->Next;
@@ -201,6 +208,7 @@ _Use_decl_annotations_ VOID filter_receive_net_buffer_lists(NDIS_HANDLE filter_m
                 NdisFReturnNetBufferLists(context->ndis_filter_handle, *current_nbl_ptr, 0);
                 (*current_nbl_ptr)->Next = next;
                 break;
+
             case XDP_DROP:
             case XDP_ABORTED:
             default:
