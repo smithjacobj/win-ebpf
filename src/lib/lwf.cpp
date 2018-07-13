@@ -252,6 +252,28 @@ _Use_decl_annotations_ VOID filter_return_net_buffer_lists(NDIS_HANDLE filter_in
                                                            PNET_BUFFER_LIST net_buffer_lists,
                                                            ULONG return_flags)
 {
+    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+
+    // look for NBLs we allocated
+    for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_lists; *current_nbl_ptr != NULL;
+         current_nbl_ptr = &NET_BUFFER_LIST_NEXT_NBL(*current_nbl_ptr))
+    {
+        // if we allocated this NBL (likely any we receive on this path), free it
+        if ((*current_nbl_ptr)->SourceHandle == context->ndis_filter_handle)
+        {
+            // remove the NBL
+            PNET_BUFFER_LIST popped = *current_nbl_ptr;
+            current_nbl_ptr = &NET_BUFFER_LIST_NEXT_NBL(popped);
+            // free it
+            NdisFreeNetBufferList(popped);
+        }
+    }
+
+    // any remaining NBLs (unlikely) belong to another driver.
+    if (net_buffer_lists != NULL)
+    {
+        NdisFReturnNetBufferLists(context->ndis_filter_handle, net_buffer_lists, return_flags);
+    }
 }
 
 }; // namespace win_xdp
