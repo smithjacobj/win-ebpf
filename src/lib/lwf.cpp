@@ -229,10 +229,14 @@ _Use_decl_annotations_ VOID filter_receive_net_buffer_lists(NDIS_HANDLE filter_m
     if (xrv.tx_net_buffer_lists != NULL)
     {
         ULONG send_flags;
-        if (NDIS_TEST_RECEIVE_AT_DISPATCH_LEVEL(receive_flags)) {
+        if (NDIS_TEST_RECEIVE_AT_DISPATCH_LEVEL(receive_flags))
+        {
             NDIS_SET_SEND_FLAG(send_flags, NDIS_SEND_FLAGS_DISPATCH_LEVEL);
         }
-        NdisFSendNetBufferLists(context->ndis_filter_handle, xrv.tx_net_buffer_list, port_number, send_flags);
+        NdisFSendNetBufferLists(
+            context->ndis_filter_handle, xrv.tx_net_buffer_list, port_number, send_flags);
+        // TODO: does port_number need to get updated from each NET_BUFFER? Therefore, do we need to
+        // send each separately to ensure correct port handling?
     }
     // dropped NBLs are simply freed since we allocated them.
     while (xrv.drop_net_buffer_lists != NULL)
