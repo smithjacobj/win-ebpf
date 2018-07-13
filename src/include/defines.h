@@ -18,4 +18,9 @@ extern constexpr uint32_t DRIVER_SIGNATURE = 'PDXW'; // 'WXDP' when viewed in th
 extern constexpr int DRIVER_MAJOR_VERSION = 0;
 extern constexpr int DRIVER_MINOR_VERSION = 1;
 
+enum tx_rx {
+    TX = 1,
+    RX = 2,
+};
+
 }; // namespace win_xdp
