@@ -69,6 +69,23 @@ _Use_decl_annotations_ NDIS_STATUS filter_attach(NDIS_HANDLE ndis_filter_handle,
                                                  NDIS_HANDLE filter_FILTER_GLOBAL_CONTEXT,
                                                  PNDIS_FILTER_ATTACH_PARAMETERS attach_parameters)
 {
+    NET_BUFFER_LIST_POOL_PARAMETERS params = {};
+
+    params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    params.Header.Version = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+    params.Header.Size = NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+
+    params.ProtocolId = 0;
+
+    params.fAllocateNetBuffer = TRUE;
+
+    params.ContextSize = 0;
+
+    params.PoolTag = DRIVER_SIGNATURE;
+
+    params.DataSize = static_cast<ULONG>(MAX_PACKET_SIZE);
+
+    NdisAllocateNetBufferListPool(,&params);
     // TODO: allocate NBL pool
 }
 
