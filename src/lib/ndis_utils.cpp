@@ -1,8 +1,25 @@
+// Windows XDP Packet Filter
+// Copyright (C) 2018  Jacob Masen-Smith
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 #include "ndis_utils.h"
 
 // copy_single_net_buffer_list
 template <tx_rx direction>
-static PNET_BUFFER_LIST copy_single_net_buffer_list(FILTER_INSTANCE_CONTEXT *context,
+static PNET_BUFFER_LIST copy_single_net_buffer_list(FilterInstanceContext *context,
                                                     PNET_BUFFER_LIST src)
 {
     PNET_BUFFER_LIST dst = NULL;
@@ -38,7 +55,7 @@ static PNET_BUFFER_LIST copy_single_net_buffer_list(FILTER_INSTANCE_CONTEXT *con
                                                        NET_BUFFER_LIST_FIRST_NB(src),
                                                        0,
                                                        &bytes_copied);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status))
     {
         wnx_error_print("failed to copy NET_BUFFER data, status %d", status);
         goto fail;
@@ -58,7 +75,7 @@ fail:
 }
 
 // copy_net_buffer_lists
-PNET_BUFFER_LIST copy_net_buffer_lists(FILTER_INSTANCE_CONTEXT *context, PNET_BUFFER_LIST src)
+PNET_BUFFER_LIST copy_net_buffer_lists(FilterInstanceContext *context, PNET_BUFFER_LIST src)
 {
     PNET_BUFFER_LIST head = NULL, *tail = &head;
 

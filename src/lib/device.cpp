@@ -1,3 +1,20 @@
+// Windows XDP Packet Filter
+// Copyright (C) 2018  Jacob Masen-Smith
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 #include <array>
 
 #include "device.h"
@@ -37,7 +54,7 @@ _Use_decl_annotations_ NDIS_STATUS root_device_register() {
 
     dev_attribs.MajorFunctions = dispatch_table.data();
 
-    dev_attribs.ExtensionSize = sizeof(ROOT_DEVICE_EXTENSION);
+    dev_attribs.ExtensionSize = sizeof(RootDeviceExtension);
 
     dev_attribs.DefaultSDDLString = DEFAULT_SDDL;
 
@@ -48,7 +65,7 @@ _Use_decl_annotations_ NDIS_STATUS root_device_register() {
         return status;
     }
 
-    ROOT_DEVICE_EXTENSION *device_extension = static_cast<ROOT_DEVICE_EXTENSION *>(
+    RootDeviceExtension *device_extension = static_cast<RootDeviceExtension *>(
         NdisGetDeviceReservedExtension(global_root_device_object));
 
     // TODO: set extension fields here

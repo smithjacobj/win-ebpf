@@ -1,3 +1,20 @@
+// Windows XDP Packet Filter
+// Copyright (C) 2018  Jacob Masen-Smith
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 #include "lwf.h"
 #include "globals.h"
 
@@ -49,7 +66,7 @@ _Use_decl_annotations_ NTSTATUS driver_entry(struct _DRIVER_OBJECT *driver_objec
 
     // register the driver properties
     status = NdisFRegisterFilterDriver(
-        driver_object, &global_FILTER_GLOBAL_CONTEXT, &fchars, &global_driver_handle);
+        driver_object, &global_filter_context, &fchars, &global_driver_handle);
     if (!NT_SUCCESS(status))
     {
         return status;
@@ -66,16 +83,21 @@ _Use_decl_annotations_ void driver_unload(struct _DRIVER_OBJECT *driver_object)
 
 // filter_attach
 _Use_decl_annotations_ NDIS_STATUS filter_attach(NDIS_HANDLE ndis_filter_handle,
-                                                 NDIS_HANDLE filter_FILTER_GLOBAL_CONTEXT,
+                                                 NDIS_HANDLE global_filter_context_void,
                                                  PNDIS_FILTER_ATTACH_PARAMETERS attach_parameters)
 {
+    // allocate and register the instance context
+    // TODO: actually allocate the context.
+    FilterInstanceContext *context = NULL;
+
+    // allocate the instance's NET_BUFFER_LIST_POOL.
     NET_BUFFER_LIST_POOL_PARAMETERS params = {};
 
     params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
     params.Header.Version = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
     params.Header.Size = NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
 
-    params.ProtocolId = 0;
+    params.ProtocolId = NDIS_PROTOCOL_ID_DEFAULT;
 
     params.fAllocateNetBuffer = TRUE;
 
@@ -85,14 +107,31 @@ _Use_decl_annotations_ NDIS_STATUS filter_attach(NDIS_HANDLE ndis_filter_handle,
 
     params.DataSize = static_cast<ULONG>(MAX_PACKET_SIZE);
 
-    NdisAllocateNetBufferListPool(,&params);
-    // TODO: allocate NBL pool
+    context->net_buffer_list_pool = NdisAllocateNetBufferListPool(ndis_filter_handle, &params);
+    if (context->net_buffer_list_pool == NULL)
+    {
+        wnx_error_print("failed to allocate NET_BUFFER_LIST_POOL for filter instance");
+        goto fail
+    }
+
+    return NDIS_STATUS_SUCCESS;
+
+fail:
+    NdisFreeNetBufferListPool(context->net_buffer_list_pool);
+    // TODO: free context allocation.
+
+    return NDIS_STATUS_FAILURE;
 }
 
 // filter_detach
 _Use_decl_annotations_ VOID filter_detach(NDIS_HANDLE filter_instance_context_void)
 {
-    // TODO: deallocate NBL pool
+    FilterInstanceContext *context = filter_instance_context_void;
+
+    // deallocate NBL pool
+    NdisFreeNetBufferListPool(context->net_buffer_list_pool);
+
+    // TODO: deallocate context
 }
 
 // filter_restart
@@ -109,7 +148,7 @@ _Use_decl_annotations_ NDIS_STATUS filter_pause(NDIS_HANDLE filter_instance_cont
 
 // filter_set_options
 _Use_decl_annotations_ NDIS_STATUS filter_set_options(NDIS_HANDLE ndis_driver_handle,
-                                                      NDIS_HANDLE FILTER_GLOBAL_CONTEXT)
+                                                      NDIS_HANDLE FilterGlobalContext)
 {
 }
 
@@ -130,7 +169,7 @@ _Use_decl_annotations_ VOID
 filter_cancel_send_net_buffer_lists(NDIS_HANDLE filter_instance_context_void, PVOID cancel_id)
 {
     // this function is required, but this driver does not queue NBLs for a "long" period of time
-    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    FilterInstanceContext *context = filter_instance_context_void;
     NdisFCancelSendNetBufferLists(context->ndis_filter_handle, cancel_id);
 }
 
@@ -140,7 +179,7 @@ _Use_decl_annotations_ VOID filter_send_net_buffer_lists(NDIS_HANDLE filter_inst
                                                          NDIS_PORT_NUMBER port_number,
                                                          ULONG send_flags)
 {
-    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    FilterInstanceContext *context = filter_instance_context_void;
 
     // copy the NBLs, because they need to be contiguous for XDP to be able to modify them as a
     // linear buffer.
@@ -180,7 +219,7 @@ filter_send_net_buffer_lists_complete(NDIS_HANDLE filter_instance_context_void,
                                       PNET_BUFFER_LIST net_buffer_lists,
                                       ULONG send_complete_flags)
 {
-    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    FilterInstanceContext *context = filter_instance_context_void;
 
     // look for NBLs we allocated
     for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_lists; *current_nbl_ptr != NULL;
@@ -212,7 +251,7 @@ _Use_decl_annotations_ VOID filter_receive_net_buffer_lists(NDIS_HANDLE filter_m
                                                             ULONG number_of_net_buffer_lists,
                                                             ULONG receive_flags)
 {
-    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    FilterInstanceContext *context = filter_instance_context_void;
 
     // copy the NBLs, because they need to be contiguous for XDP to be able to modify them as a
     // linear buffer.
@@ -269,7 +308,7 @@ _Use_decl_annotations_ VOID filter_return_net_buffer_lists(NDIS_HANDLE filter_in
                                                            PNET_BUFFER_LIST net_buffer_lists,
                                                            ULONG return_flags)
 {
-    FILTER_INSTANCE_CONTEXT *context = filter_instance_context_void;
+    FilterInstanceContext *context = filter_instance_context_void;
 
     // look for NBLs we allocated
     for (PNET_BUFFER_LIST *current_nbl_ptr = &net_buffer_lists; *current_nbl_ptr != NULL;
