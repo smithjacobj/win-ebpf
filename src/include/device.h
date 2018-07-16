@@ -19,14 +19,15 @@
 
 #include "main.h"
 
-namespace win_xdp {
-    
+namespace win_xdp
+{
+
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/sddl-for-device-objects
 const PCUNICODE_STRING DEFAULT_SDDL = SDDL_DEVOBJ_SYS_ALL_ADM_ALL;
 
-// root_device_register registers a virtual device to receive IRPs
-_IRQL_requires_max_(PASSIVE_LEVEL)
-NDIS_STATUS root_device_register();
-
+// root_device_register registers a virtual device to receive IRPs. The root device's
+// responsibilities are general queries, e.g. listing all available filter instances. Filter
+// instances will have their own device to use for assigning eBPF programs, etc.
+_IRQL_requires_max_(PASSIVE_LEVEL) NDIS_STATUS root_device_register();
 
 }; // namespace win_xdp

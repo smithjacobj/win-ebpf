@@ -21,8 +21,6 @@
 namespace win_xdp
 {
 
-constexpr ULONG DATA_BUFFER_SIZE = 0xFFFF;
-
 // init functions can be removed from memory once they have completed.
 #pragma NDIS_INIT_FUNCTION(driver_entry)
 
@@ -79,6 +77,7 @@ _Use_decl_annotations_ NTSTATUS driver_entry(struct _DRIVER_OBJECT *driver_objec
 _Use_decl_annotations_ void driver_unload(struct _DRIVER_OBJECT *driver_object)
 {
     // TODO: do any cleanup/disposal operations here
+    NdisFDeregisterFilterDriver(&global_driver_handle);
 }
 
 // filter_attach
@@ -88,37 +87,59 @@ _Use_decl_annotations_ NDIS_STATUS filter_attach(NDIS_HANDLE ndis_filter_handle,
 {
     // allocate and register the instance context
     // TODO: actually allocate the context.
-    FilterInstanceContext *context = NULL;
+    FilterInstanceContext *context = NdisAllocateMemoryWithTagPriority(
+        ndis_filter_handle, sizeof(FilterInstanceContext), DRIVER_SIGNATURE, NormalPoolPriority);
+    if (context == NULL)
+    {
+        wnx_error_print("failed to allocate filter instance");
+        goto fail;
+    }
 
     // allocate the instance's NET_BUFFER_LIST_POOL.
-    NET_BUFFER_LIST_POOL_PARAMETERS params = {};
+    NET_BUFFER_LIST_POOL_PARAMETERS pp = {};
 
-    params.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
-    params.Header.Version = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
-    params.Header.Size = NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+    pp.Header.Type = NDIS_OBJECT_TYPE_DEFAULT;
+    pp.Header.Version = NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
+    pp.Header.Size = NDIS_SIZEOF_NET_BUFFER_LIST_POOL_PARAMETERS_REVISION_1;
 
-    params.ProtocolId = NDIS_PROTOCOL_ID_DEFAULT;
+    pp.ProtocolId = NDIS_PROTOCOL_ID_DEFAULT;
 
-    params.fAllocateNetBuffer = TRUE;
+    pp.fAllocateNetBuffer = TRUE;
 
-    params.ContextSize = 0;
+    pp.ContextSize = 0;
 
-    params.PoolTag = DRIVER_SIGNATURE;
+    pp.PoolTag = DRIVER_SIGNATURE;
 
-    params.DataSize = static_cast<ULONG>(MAX_PACKET_SIZE);
+    pp.DataSize = static_cast<ULONG>(MAX_PACKET_SIZE);
 
-    context->net_buffer_list_pool = NdisAllocateNetBufferListPool(ndis_filter_handle, &params);
+    context->net_buffer_list_pool = NdisAllocateNetBufferListPool(ndis_filter_handle, &pp);
     if (context->net_buffer_list_pool == NULL)
     {
         wnx_error_print("failed to allocate NET_BUFFER_LIST_POOL for filter instance");
         goto fail
     }
 
+    NDIS_FILTER_ATTRIBUTES fa = {};
+
+    fa.Header.Type = NDIS_OBJECT_TYPE_FILTER_ATTRIBUTES;
+    fa.Header.Revision = NDIS_FILTER_ATTRIBUTES_REVISION_1;
+    fa.Header.Size = NDIS_SIZEOF_FILTER_ATTRIBUTES_REVISION_1;
+
+    fa.Flags = 0;
+
+    NDIS_STATUS status = NdisFSetAttributes(
+        ndis_filter_handle, static_cast<NDIS_HANDLE>(filter_instance_context), &fa);
+    if (!NT_SUCCESS(status))
+    {
+        wnx_error_print("failed to set filter attributes");
+        goto fail;
+    }
+
     return NDIS_STATUS_SUCCESS;
 
 fail:
     NdisFreeNetBufferListPool(context->net_buffer_list_pool);
-    // TODO: free context allocation.
+    NdisFreeMemoryWithTagPriority(ndis_filter_handle, context, DRIVER_SIGNATURE);
 
     return NDIS_STATUS_FAILURE;
 }
@@ -148,8 +169,9 @@ _Use_decl_annotations_ NDIS_STATUS filter_pause(NDIS_HANDLE filter_instance_cont
 
 // filter_set_options
 _Use_decl_annotations_ NDIS_STATUS filter_set_options(NDIS_HANDLE ndis_driver_handle,
-                                                      NDIS_HANDLE FilterGlobalContext)
+                                                      NDIS_HANDLE filter_global_context)
 {
+    FilterGlobalContext *g_context = filter_global_context;
 }
 
 // filter_set_module_options
